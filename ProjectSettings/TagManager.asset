@@ -8,11 +8,13 @@ TagManager:
   - HumanBot
   - FlyBot
   - PlayerBullet
+  - Foot
+  - EnemyBullet
   layers:
   - Default
   - TransparentFX
   - Ignore Raycast
-  - 
+  - Player
   - Water
   - UI
   - 

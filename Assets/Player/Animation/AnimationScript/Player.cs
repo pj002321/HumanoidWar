@@ -1,22 +1,31 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Pool;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+
 
 public class Player : MonoBehaviour
 {
     #region Variables
+
     public Animator anim;
     public CharacterController controller;
-    private GameObject MyCamera;
-    private GameObject FireStartPosition;
-    private GameObject FireStartLook;
-    public GameObject BulletObject;
-    private GameObject HeadPosition;
+    public GameObject fireStartPosition;
+    private GameObject rifleObject;
+    public GameObject bulletPrefab;
+    public Transform headPosition;
+    private AudioSource audiosource;
+    public AudioClip audioClip;
+    private Slider slider;
+    public Image crossHair;
+
     private float rotationSpeed = 30f;
-    public float moveSpeed = 2.5f;
-    private float bulletSpeed = 20000;
+    public float moveSpeed = 3.5f;
+    private float bulletSpeed = 4000;
     private float BulletActiveTerm = 0.0f;
-    
+
     private int hashSlash = Animator.StringToHash("Slash");
     private int hashShot = Animator.StringToHash("Shoot");
     private int hashRoll = Animator.StringToHash("Roll");
@@ -24,82 +33,122 @@ public class Player : MonoBehaviour
     private int hashJumpReady = Animator.StringToHash("JumpReady");
     private int hashPunch = Animator.StringToHash("Punch");
     private int hashRunState = Animator.StringToHash("RunState");
+    private int hashDie = Animator.StringToHash("IsAlive");
 
+    public Vector3 cameraOffset = new Vector3(0.8f, 0.5f, -3.0f);
     private bool isJumping = false;
     private bool isSlashJumping = false;
-    float WeightValue;
 
+    float weightValue;
+    private Quaternion initialRifleRotation;
+    private Quaternion originCameraPosition;
+  
+    public int numberOfBullet = 40;
+    private IObjectPool<Bullet> pool;
     RaycastHit hit;
+    private int hp;
+    public int maxHp = 100;
     #endregion Variables
     #region UnityMethods
     void Start()
     {
         controller = GetComponent<CharacterController>();
         anim = GetComponent<Animator>();
-        MyCamera = GameObject.Find("Camera");
-        FireStartPosition = GameObject.Find("FirePosition");
-        FireStartLook = GameObject.Find("Rifle_1");
-        HeadPosition = GameObject.Find("mixamorig:Head");
-        WeightValue = 0.5f;
+        audiosource= GetComponent<AudioSource>();
+        rifleObject = GameObject.Find("Rifle_1");
+        weightValue = 0.5f;
+        hp = maxHp;
+        slider=GetComponentInChildren<Slider>();
+        initialRifleRotation = rifleObject.transform.localRotation;
+        originCameraPosition = Camera.main.transform.localRotation;
     }
 
     void Update()
     {
-        float mouseGetX = Input.GetAxis("Mouse X");
-        float mouseGetY = Input.GetAxis("Mouse Y");
-        float moveGetX = Input.GetAxis("Horizontal") * WeightValue;
-        float moveGetZ = Input.GetAxis("Vertical") * WeightValue;
-        transform.Rotate(Vector3.up, mouseGetX * rotationSpeed * Time.deltaTime);
-        float YPosition = transform.position.y;
-
-
-        anim.SetFloat("Height", transform.position.y);
-        if (Physics.Raycast(transform.position, -transform.up, out hit, 2.0f))
+        if (!IsAlive)
+        {
+            anim.SetBool(hashDie, false);
+            Invoke("LoadLobbyScene", 3f);
+        }
+        else
         {
 
-            if (hit.distance < 0.1f)
+            float mouseGetX = Input.GetAxis("Mouse X");
+
+            float mouseGetY = Input.GetAxis("Mouse Y");
+            float moveGetX = Input.GetAxis("Horizontal") * weightValue;
+            float moveGetZ = Input.GetAxis("Vertical") * weightValue;
+            transform.Rotate(Vector3.up, mouseGetX * rotationSpeed * Time.deltaTime);
+            slider.value = hp * 0.01f;
+            anim.SetFloat("Height", transform.position.y);
+            if (Physics.Raycast(transform.position, -transform.up, out hit, 2.0f))
             {
-
-                isJumping = false;
-                isSlashJumping = false;
+                if (hit.distance < 0.1f)
+                {
+                    isJumping = false;
+                    isSlashJumping = false;
+                }
             }
-        }
-        if (moveGetX == 0.0f && moveGetZ == 0.0f)
-        {
-            anim.SetBool("Idle", true);
-            WeightValue = 0.8f;
-        }
-        Vector3 moveDirection = new Vector3(moveGetX, 0, moveGetZ);
-        moveDirection = transform.TransformDirection(moveDirection);
-        controller.Move(moveDirection * Time.deltaTime * moveSpeed);
+            if (moveGetX == 0.0f && moveGetZ == 0.0f)
+            {
+                anim.SetBool("Idle", true);
+                weightValue = 0.8f;
+            }
+            Vector3 moveDirection = new Vector3(moveGetX, 0, moveGetZ);
+            moveDirection = transform.TransformDirection(moveDirection);
+            controller.Move(moveDirection * Time.deltaTime * moveSpeed);
 
-        anim.SetFloat("Movez", moveGetZ);
-        anim.SetFloat("Movex", moveGetX);
-        BulletActiveTerm += Time.deltaTime * 5.0f;
-        PlayerAnimationByState();
-        CameraUpdate();
-
+            anim.SetFloat("Movez", moveGetZ);
+            anim.SetFloat("Movex", moveGetX);
+            BulletActiveTerm += Time.deltaTime * 5.0f;
+            RifleRotationUpdate(mouseGetY);
+            PlayerAnimationByState();
+       
+        }
     }
     #endregion UnityMethods
     #region CustomMethods
-    void CameraUpdate()
+ 
+    void LoadLobbyScene()
     {
-        Vector3 CameraOffsetStartPosition = HeadPosition.transform.position;
-        Vector3 cameraOffset = new Vector3(1.4f, 0.0f, -2.5f);
-        MyCamera.transform.rotation = Quaternion.LookRotation(transform.forward, transform.up)/* * Quaternion.Euler(0f, -20f, 0f);*/ ;
-        Vector3 cameraPosition = CameraOffsetStartPosition + transform.up * cameraOffset.y + transform.right * cameraOffset.x + transform.forward * cameraOffset.z;
-        MyCamera.transform.position = cameraPosition;
+        SceneManager.LoadScene(0);
     }
-
     void BulletAction()
     {
-        Vector3 Startposition = FireStartPosition.transform.position;
-        GameObject bullet = Instantiate(BulletObject, Startposition + MyCamera.transform.forward, Quaternion.identity);
-        bullet.transform.forward = MyCamera.transform.forward;
-        bullet.transform.Rotate(new Vector3(1, 0, 0), 90.0f);
+        anim.SetTrigger("ShootTrigger");
+        audiosource.clip = audioClip;
+        audiosource.Play();
+
+        var bullet = ObjectPool.GetObject();
+        bullet.transform.position = fireStartPosition.transform.position;
+
+        Ray ray =  Camera.main.ScreenPointToRay(new Vector2((Screen.width / 2), Screen.height / 2));
+
         Rigidbody bulletRigidbody = bullet.GetComponent<Rigidbody>();
-        bulletRigidbody.AddForce(FireStartLook.transform.forward * bulletSpeed, ForceMode.Force);
-        Destroy(bullet, 2.0f);
+        bulletRigidbody.velocity = Vector3.zero;
+        bulletRigidbody.angularVelocity = Vector3.zero;
+        bulletRigidbody.AddForce(ray.direction * bulletSpeed, ForceMode.Force);
+
+        StartCoroutine(ReleaseBulletAfterTime(bullet, 0.25f));
+    }
+
+
+    private IEnumerator ReleaseBulletAfterTime(Bullet bullet, float time)
+    {
+        yield return new WaitForSeconds(time);
+      
+        bullet.ReleaseToPool(); 
+        
+    }
+    float rifleRotationX = 0;
+    void RifleRotationUpdate(float mouseY)
+    {
+        rifleRotationX -= mouseY * rotationSpeed * Time.deltaTime;
+        rifleRotationX = Mathf.Clamp(rifleRotationX, -10, 10);
+        rifleObject.transform.localRotation = initialRifleRotation * Quaternion.Euler(rifleRotationX, 0, 0);
+
+        crossHair.transform.position = new Vector2(Screen.width / 2, Screen.height / 2 - (rifleRotationX/4));
+        Camera.main.transform.localRotation = originCameraPosition * Quaternion.Euler((rifleRotationX / 4), 0, 0);
     }
 
     void PlayerAnimationByState()
@@ -108,6 +157,7 @@ public class Player : MonoBehaviour
         if (isShooting)
         {
             BulletAction();
+            
             BulletActiveTerm = 0.0f;
         }
         anim.SetBool(hashShot, isShooting);
@@ -134,16 +184,15 @@ public class Player : MonoBehaviour
 
         if (Input.GetKey(KeyCode.LeftShift))
         {
-            WeightValue += (WeightValue > 30.0f ? -0.3f : 0.3f) * Time.deltaTime;
+            weightValue += (weightValue > 30.0f ? -0.3f : 0.3f) * Time.deltaTime;
             anim.SetBool(hashRunState, true);
         }
         else
         {
-            WeightValue = 0.8f;
             anim.SetBool(hashRunState, false);
+            weightValue = 0.5f;
         }
     }
-
     void SlashJump()
     {
         if (!isSlashJumping)
@@ -151,6 +200,14 @@ public class Player : MonoBehaviour
             isSlashJumping = true;
             controller.Move(Vector3.up * 10.0f); 
             anim.SetBool(hashJumpReady, false);
+        }
+    }
+    bool IsAlive => hp > 0;
+    private void OnTriggerEnter(Collider other)
+    {
+        if(other.gameObject.CompareTag("EnemyBullet"))
+        {
+            hp -= 1;
         }
     }
     #endregion CustomMethods

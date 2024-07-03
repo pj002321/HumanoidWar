@@ -1,69 +1,93 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.AI;
+using UnityEngine.UI;
 
 public class MineEnermy : MonoBehaviour
 {
-    private GameObject PlayerObject;
+    #region Variables
+
+    public LayerMask playerLayer;
+    public float speed = 5f;
+    public float radius = 10f;
+
     private float jumpTimer = 0.0f;
     private float jumpInterval = 2f;
 
     private GameObject ExplosObjects;
     public GameObject ExplosionPreb;
+    public ParticleSystem particlePrefab;
     private float ParticleForce = 5;
-    private float LifeTime = 5.0f;
+    private float LifeTime = 0.5f;
+    private AudioSource audioSource;
+    public AudioClip audioClip;
     public Animator anim;
+    private NavMeshAgent agent;
+    private Slider slider;
+    public int hp;
+    private int maxhp = 100;
+    private int hashChasing = Animator.StringToHash("IsChasing");
+    #endregion Variables
+
     // Start is called before the first frame update
     void Start()
     {
-        PlayerObject = GameObject.Find("Ch44_nonPBR 1");
-        anim = GetComponent<Animator>();
-        Vector3 Position = transform.position;
-        Position.y = 0.0f;
+        slider= GetComponentInChildren<Slider>();
+        audioSource = GetComponent<AudioSource>();
+        anim = GetComponentInChildren<Animator>();
+        agent = GetComponent<NavMeshAgent>();
+        agent.speed = speed;
+
+        hp = maxhp;
     }
 
     // Update is called once per frame
     void Update()
     {
-        Vector3 playerPosition = PlayerObject.transform.position;
-
-        if ( (playerPosition.z - transform.position.z) < 10.0f)
+        if (!IsAlive)
         {
-            Vector3 moveDirection = playerPosition - transform.position;
-            moveDirection.Normalize();
-          //  transform.position += moveDirection * 1.5f * Time.deltaTime;
-           // transform.position = new Vector3(transform.position.x, transform.position.y, transform.position.z);
-            //anim.SetBool("Move",true);
-        }
-       
-        Jump();
-    }
-
-
-
-    void Jump()
-    {
-
-        jumpTimer += Time.deltaTime;
-        
-        if (jumpTimer >= jumpInterval)
-        {
-            Rigidbody Minrigidb = GetComponent<Rigidbody>();
-            anim.SetBool("Jump", true);
-            Minrigidb.AddForce(Vector3.up * 6f, ForceMode.Impulse);
-            jumpTimer = 0.0f;
+            slider.value = 0f;
+           Destroy(gameObject, 0.5f);
         }
         else
         {
-            anim.SetBool("Jump", false);
-        }
+            slider.value = hp * 0.01f;
+            Collider[] playerInRange = Physics.OverlapSphere(transform.position, radius, playerLayer);
 
+            if (playerInRange.Length > 0)
+            {
+                agent.SetDestination(playerInRange[0].transform.position);
+                anim.SetBool(hashChasing, true);
+                Jump();
+            }
+            else
+            {
+                anim.SetBool(hashChasing, false);
+            }
+
+            Jump();
+        }
     }
-    
+
+    private bool IsAlive => hp > 0;
+
+    void Jump()
+    {
+        jumpTimer += Time.deltaTime;
+
+        if (jumpTimer >= jumpInterval)
+        {
+            Rigidbody Minrigidb = GetComponent<Rigidbody>();
+            Minrigidb.AddForce(Vector3.up * 6f, ForceMode.Impulse);
+            jumpTimer = 0.0f;
+        }
+    }
+
     void ExplosionAction()
     {
 
-        for (int i = 0; i < 80; i++)
+        for (int i = 0; i < 60; i++)
         {
             Vector3 StartPos = transform.position;
             ExplosObjects = Instantiate(ExplosionPreb, new Vector3(StartPos.x, StartPos.y, StartPos.z), Quaternion.identity);
@@ -72,10 +96,20 @@ public class MineEnermy : MonoBehaviour
 
             Vector3 RandomDir = Random.insideUnitSphere * ParticleForce;
             Exrigidby.AddForce(RandomDir * 10, ForceMode.Impulse);
-            // Lifetime 초 뒤에 사라짐
             Destroy(ExplosObjects, LifeTime);
         }
 
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.transform.CompareTag("PlayerBullet"))
+        {
+            audioSource.clip = audioClip;
+            audioSource.Play();
+            particlePrefab.Play();
+            hp -= 5;
+        }
     }
 
 }
